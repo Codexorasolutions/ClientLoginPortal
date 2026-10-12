@@ -57,18 +57,14 @@ export const signup = async (req, res) => {
         html: otpEmailHtml(otp, 'Verify your email'),
       });
     } catch (emailErr) {
-      // roll back the account so the same email can be retried once SMTP
-      // is fixed, and surface the SPECIFIC reason instead of a generic
-      // "signup failed" — this is almost always a bad SMTP_USER/SMTP_PASS
-      console.error('OTP email failed to send:', emailErr);
+      // roll back the account so the same email can be retried once email is fixed.
+      // The exact reason (and how to fix it) goes to the server log; visitors get a calm, safe message.
+      console.error('OTP email failed to send:', emailErr.hint || emailErr.message, emailErr.message);
       await User.deleteOne({ _id: user._id });
       return res.status(502).json({
         message:
-          'Your account details are fine, but the verification email could not be sent. ' +
-          'This almost always means SMTP_USER / SMTP_PASS in the backend .env is wrong — ' +
-          'Gmail requires a 16-character App Password (from myaccount.google.com/apppasswords), ' +
-          'not your normal Gmail password. Fix .env, restart the backend with `npm run dev`, ' +
-          'then try signing up again. (Exact SMTP error is in the backend terminal.)',
+          'Your details are fine, but we could not send the verification email right now. ' +
+          'Please try again in a few minutes. If it keeps failing, contact Codexora Solutions.',
       });
     }
 
@@ -137,12 +133,9 @@ export const resendOtp = async (req, res) => {
         html: otpEmailHtml(otp, 'Your new verification code'),
       });
     } catch (emailErr) {
-      console.error('Resend OTP email failed to send:', emailErr);
+      console.error('Resend OTP email failed to send:', emailErr.hint || emailErr.message, emailErr.message);
       return res.status(502).json({
-        message:
-          'Could not send the email — this usually means SMTP_USER / SMTP_PASS in the backend ' +
-          '.env is wrong (Gmail needs a 16-character App Password). Check the backend terminal ' +
-          'for the exact error.',
+        message: 'We could not send the email right now. Please try again in a few minutes.',
       });
     }
 

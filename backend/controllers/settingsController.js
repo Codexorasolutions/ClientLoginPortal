@@ -1,4 +1,4 @@
-import sendEmail from '../utils/sendEmail.js';
+import sendEmail, { emailProvider } from '../utils/sendEmail.js';
 import { getSettings, saveSettings, renderEmail } from '../utils/settings.js';
 import { buildDefaults, TEMPLATE_VARS, SAMPLE_VARS, sanitizeSettings, diffPaths } from '../utils/settingsDefaults.js';
 import { logAudit } from '../utils/audit.js';
@@ -47,6 +47,8 @@ export const sendTestEmail = async (req, res) => {
     res.json({ message: `Test email sent to ${req.user.email}` });
   } catch (err) {
     console.error(err);
-    res.status(502).json({ message: 'Could not send the test email. Check SMTP_USER / SMTP_PASS in backend/.env.' });
+    console.error('[test-email] failed:', err.hint || err.message, err.message);
+    // the owner sees the real reason and the fix (this route is owner-only)
+    res.status(502).json({ message: `Could not send the test email (${emailProvider()}). ${err.hint || err.message}` });
   }
 };
