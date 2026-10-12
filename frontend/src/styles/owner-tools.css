@@ -1,0 +1,77 @@
+/* Settings tab, Audit log tab and the owner email-code step — built on the portal's own theme variables,
+   so light/dark mode and the teal accent follow theme.css automatically. */
+
+/* ---------- shared ---------- */
+.tool-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+.tool-tabs button { background: none; border: 0; padding: 10px 14px; font: 600 13.5px Inter, sans-serif; color: var(--ink-soft); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tool-tabs button.on { color: var(--ink); border-bottom-color: var(--ochre); }
+.tool-tabs button:focus-visible, .tool-chip:focus-visible, .au-head:focus-visible { outline: 2px solid var(--ochre); outline-offset: 1px; }
+
+.tool-wrap { max-width: 860px; padding-bottom: 12px; }
+.tool-lead { margin: 0 0 4px; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 18px; }
+.tool-field label { margin-top: 14px; }
+.tool-field textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: 400 14px Inter, sans-serif; line-height: 1.5; resize: vertical; box-sizing: border-box; }
+.tool-field.has-err input, .tool-field.has-err textarea { border-color: var(--rust); }
+.tool-field em { display: block; color: var(--rust); font-style: normal; font-size: 12.5px; margin-top: 5px; }
+.tool-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.tool-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.tool-chip { font: 12.5px ui-monospace, Menlo, monospace; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.tool-chip:hover { border-color: var(--ochre); color: var(--sage); }
+
+.tool-bar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 12px 0; margin-top: 18px; background: var(--paper); border-top: 1px solid var(--line); }
+.tool-note { margin-right: auto; font-size: 13.5px; color: var(--ink-soft); }
+.tool-note.ok { color: var(--sage); } .tool-note.err { color: var(--rust); }
+
+.tool-stamp { display: flex; gap: 10px; align-items: center; margin-top: 16px; padding: 10px 12px; border: 1px solid var(--sage); background: rgba(21, 128, 61, .08); border-radius: 8px; width: fit-content; max-width: 100%; }
+.tool-stamp b { background: var(--sage); color: #fff; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; flex: none; }
+.tool-stamp strong { display: block; color: var(--sage); font-size: 14px; }
+.tool-stamp small { color: var(--ink-soft); font-size: 11.5px; }
+
+/* ---------- audit log ---------- */
+.au-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+.au-filters > div { min-width: 130px; }
+.au-filters > div label { margin-top: 0; }
+.au-search { flex: 1 1 200px; }
+.au-msg { color: var(--ink-soft); padding: 28px 8px; text-align: center; margin: 0; }
+.au-msg.err { color: var(--rust); }
+.au-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); overflow: hidden; }
+.au-list.busy { opacity: .6; }
+.au-item + .au-item { border-top: 1px solid var(--line); }
+.au-item { border-left: 3px solid transparent; }
+.au-item.warn { border-left-color: #D9A441; } .au-item.danger { border-left-color: var(--rust); }
+.au-head { display: grid; grid-template-columns: 190px 1fr 140px 84px; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 11px 14px; font: 400 14px Inter, sans-serif; background: none; border: 0; color: var(--ink); cursor: pointer; }
+.au-head:hover { background: rgba(127, 127, 160, .07); }
+.au-badge { font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #D9F3EC; color: var(--sage); width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.au-badge.warn { background: #F7ECD3; color: #8A6410; } .au-badge.danger { background: #FBE4D3; color: var(--rust); }
+.au-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.au-who, .au-head time { color: var(--ink-soft); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.au-head time { text-align: right; }
+.au-detail { margin: 0; padding: 4px 14px 14px; display: grid; gap: 6px; font-size: 13.5px; background: rgba(127, 127, 160, .06); }
+.au-kv { display: grid; grid-template-columns: 90px 1fr; gap: 10px; }
+.au-kv dt { color: var(--ink-soft); } .au-kv dd { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.au-pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 14px; font-size: 13.5px; color: var(--ink-soft); }
+.au-pager > span:first-child { margin-right: auto; }
+@media (max-width: 680px) {
+  .au-head { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .au-what { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
+  .au-who, .au-head time { grid-row: 3; }
+  .au-kv { grid-template-columns: 70px 1fr; }
+}
+
+/* ---------- owner email-code step (login page) ---------- */
+.otp-step h2 { font-family: Poppins, sans-serif; font-size: 20px; margin: 0 0 6px; }
+.otp-sub { margin: 0 0 4px; line-height: 1.5; }
+.otp-input { font: 600 26px ui-monospace, Menlo, monospace; letter-spacing: .45em; text-align: center; padding: 12px 8px 12px 18px; }
+.otp-input[aria-invalid="true"] { border-color: var(--rust); }
+.otp-msg { min-height: 20px; margin: 8px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+.otp-msg.err { color: var(--rust); }
+.otp-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.otp-link { background: none; border: 0; padding: 4px 0; font: 500 14px Inter, sans-serif; color: var(--sage); cursor: pointer; }
+.otp-link:disabled { color: var(--ink-soft); cursor: default; }
+.otp-link:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+
+/* ---------- invoice payment form (owner → client → invoices) ---------- */
+.inv-pay-edit { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.inv-pay-edit select, .inv-pay-edit input { width: auto; flex: 1 1 150px; min-width: 0; }
+.inv-pay-note { margin: 6px 0 0; }
