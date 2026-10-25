@@ -23,6 +23,12 @@ import {
 import { listLeads, updateLeadStatus } from '../controllers/leadController.js';
 import { getOwnerSettings, updateOwnerSettings, sendTestEmail } from '../controllers/settingsController.js';
 import { listAudit, listAuditActions } from '../controllers/auditController.js';
+import ownerAccountRoutes from './ownerAccountRoutes.js';
+import ownerUserRoutes from './ownerUserRoutes.js';
+import { listUserAudit, exportAuditCsv } from '../controllers/ownerUsersController.js';
+import {
+  receiptContext, listOwnerReceipts, getOwnerReceipt, createOwnerReceipt, voidOwnerReceipt, ownerReceiptPdf,
+} from '../controllers/receiptController.js';
 
 const router = express.Router();
 
@@ -64,6 +70,22 @@ router.patch('/tickets/:id', updateTicketStatus);
 
 router.get('/leads', listLeads);
 router.patch('/leads/:id', updateLeadStatus);
+
+// payment receipts (the "Invoices" tab) — owner only, like every route in this file
+router.get('/clients/:id/receipt-context', receiptContext);
+router.get('/receipts', listOwnerReceipts);
+router.post('/receipts', createOwnerReceipt);
+router.get('/receipts/:id', getOwnerReceipt);
+router.get('/receipts/:id/pdf', ownerReceiptPdf);
+router.post('/receipts/:id/void', voidOwnerReceipt);
+
+// the owner's own account (profile, business, security, preferences, sessions)
+router.use('/account', ownerAccountRoutes);
+
+// control centre for every account that can sign in, and its audit trail (the CSV route comes first so it isn't read as an id)
+router.use('/users', ownerUserRoutes);
+router.get('/audit-log/export', exportAuditCsv);
+router.get('/audit-log', listUserAudit);
 
 // business settings (receipts + email wording) and the owner audit log
 router.get('/settings', getOwnerSettings);

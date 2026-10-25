@@ -8,7 +8,10 @@ const SECTIONS = [
   { id: 'receipt', label: 'Receipts' },
   { id: 'emails', label: 'Email templates' },
 ];
-const TEMPLATE_LABELS = { approved: 'Account approved', rejected: 'Request rejected' };
+const TEMPLATE_LABELS = {
+  approved: 'Account approved', rejected: 'Request rejected',
+  suspended: 'Account suspended', reactivated: 'Account reactivated / restored', terminated: 'Account terminated',
+};
 const BUSINESS_FIELDS = [
   ['name', 'Business name', 'text'], ['tagline', 'Tagline (optional)', 'text'],
   ['email', 'Contact email', 'email'], ['phone', 'Phone', 'tel'], ['whatsapp', 'WhatsApp number', 'tel'],

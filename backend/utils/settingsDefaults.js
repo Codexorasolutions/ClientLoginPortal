@@ -13,6 +13,9 @@ export const buildDefaults = () => ({
     linkedin: 'codexorasolutions',
     gstin: '',
     pan: '',
+    upiId: '',        // printed on receipts when set
+    bankDetails: '',  // e.g. "HDFC Bank · A/c name · IFSC" — free text, printed on receipts when set
+    logoUrl: '',      // set by the logo upload in My Account
   },
   receipt: {
     notes: '',
@@ -25,6 +28,18 @@ export const buildDefaults = () => ({
       subject: "You're approved — {{businessName}} Portal access granted",
       body: 'Welcome to the {{businessName}} Portal!\n\nYour account for {{clientName}} has been approved.\nYour client ID: {{clientId}}\n\nYou can now sign in at {{portalUrl}} using your email and password.',
     },
+    suspended: {
+      subject: 'Your {{businessName}} Portal access is suspended',
+      body: 'Hello {{clientName}},\n\nYour portal access has been suspended.\n\n{{reasonNote}}\n{{untilNote}}\n\nPlease contact {{businessName}} if you have questions.',
+    },
+    reactivated: {
+      subject: 'Your {{businessName}} Portal access is active again',
+      body: 'Hello {{clientName}},\n\nGood news — your portal access has been restored. You can sign in again at {{portalUrl}}.\n\n{{businessName}}',
+    },
+    terminated: {
+      subject: 'Your {{businessName}} Portal account has been closed',
+      body: 'Hello {{clientName}},\n\nYour portal account has been closed and you can no longer sign in.\n\n{{reasonNote}}\n\nPlease contact {{businessName}} if you think this is a mistake.',
+    },
     rejected: {
       subject: 'Update on your {{businessName}} Portal request',
       body: "We're unable to grant portal access for {{clientName}} at this time.\n\n{{reasonNote}}\n\nReply to this email if you have questions.\n\n{{businessName}}",
@@ -36,11 +51,14 @@ export const buildDefaults = () => ({
 export const TEMPLATE_VARS = {
   approved: ['clientName', 'businessName', 'clientId', 'portalUrl'],
   rejected: ['clientName', 'businessName', 'reasonNote'],
+  suspended: ['clientName', 'businessName', 'reasonNote', 'untilNote'],
+  reactivated: ['clientName', 'businessName', 'portalUrl'],
+  terminated: ['clientName', 'businessName', 'reasonNote'],
 };
 
 export const SAMPLE_VARS = {
   clientName: 'Shanti Public School', businessName: 'Codexora Solutions', clientId: 'CX-2026-014',
-  portalUrl: 'https://portal.codexora.in', reasonNote: 'Note: We could not verify your business details.',
+  portalUrl: 'https://portal.codexora.in', reasonNote: 'Reason: We could not verify your business details.', untilNote: 'Access will be restored automatically on 20 Oct 2026.',
 };
 
 export const FIELDS = {
@@ -55,6 +73,9 @@ export const FIELDS = {
   'business.linkedin': { t: 'text', max: 60 },
   'business.gstin': { t: 'gstin', max: 15 },
   'business.pan': { t: 'pan', max: 10 },
+  'business.upiId': { t: 'text', max: 60 },
+  'business.bankDetails': { t: 'text', max: 200 },
+  'business.logoUrl': { t: 'url', max: 400 },
   'receipt.notes': { t: 'multiline', max: 300 },
   'receipt.thankYou': { t: 'text', max: 100 },
   'receipt.stampText': { t: 'text', max: 60, required: true },
@@ -69,6 +90,7 @@ const RX = {
   phone: /^[+\d][\d\s-]{6,18}$/,
   gstin: /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/,
   pan: /^[A-Z]{5}\d{4}[A-Z]$/,
+  url: /^https:\/\/[^\s]+$/i,
 };
 
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
@@ -105,6 +127,7 @@ export function sanitizeSettings(input = {}, current = buildDefaults()) {
       if (rule.t === 'phone' && !RX.phone.test(v)) { errors[path] = 'Enter a valid phone number'; continue; }
       if (rule.t === 'gstin' && !RX.gstin.test(v)) { errors[path] = 'GSTIN must be 15 characters, e.g. 09ABCDE1234F1Z5'; continue; }
       if (rule.t === 'pan' && !RX.pan.test(v)) { errors[path] = 'PAN must look like ABCDE1234F'; continue; }
+      if (rule.t === 'url' && !RX.url.test(v)) { errors[path] = 'Must be an https:// link'; continue; }
     }
     if (rule.vars) {
       const bad = [...v.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]).filter((n) => !rule.vars.includes(n));

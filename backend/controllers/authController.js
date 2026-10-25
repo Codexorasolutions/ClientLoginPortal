@@ -3,21 +3,12 @@ import User from '../models/User.js';
 import generateOtp from '../utils/generateOtp.js';
 import sendEmail from '../utils/sendEmail.js';
 import generateToken from '../utils/generateToken.js';
-import { generateResetToken } from '../utils/generateResetToken.js';
 import { needsOwnerOtp, startOwnerChallenge } from '../utils/ownerOtp.js';
 import { logAudit } from '../utils/audit.js';
-
-const OTP_EXPIRY_MINUTES = 10;
-const RESET_EXPIRY_MINUTES = 30;
-
-const otpEmailHtml = (otp, heading) => `
-  <div style="font-family:Arial,sans-serif;max-width:420px">
-    <h2 style="color:#14161C">${heading}</h2>
-    <p style="color:#6B7280">Use the code below to verify your email for the Codexora Portal.</p>
-    <div style="font-size:28px;font-weight:700;letter-spacing:8px;color:#14B8A6;margin:16px 0">${otp}</div>
-    <p style="color:#6B7280;font-size:13px">This code expires in ${OTP_EXPIRY_MINUTES} minutes. If you didn't request this, you can ignore this email.</p>
-  </div>
-`;
+import LoginEvent from '../models/LoginEvent.js';
+import { accessBlock } from '../utils/userStatus.js';
+import { autoReactivateIfDue } from '../utils/suspension.js';
+import { otpEmailHtml, sendResetLink, OTP_EXPIRY_MINUTES } from '../utils/accountEmails.js';
 
 // POST /api/auth/signup
 export const signup = async (req, res) => {
@@ -57,18 +48,14 @@ export const signup = async (req, res) => {
         html: otpEmailHtml(otp, 'Verify your email'),
       });
     } catch (emailErr) {
-      // roll back the account so the same email can be retried once SMTP
-      // is fixed, and surface the SPECIFIC reason instead of a generic
-      // "signup failed" — this is almost always a bad SMTP_USER/SMTP_PASS
-      console.error('OTP email failed to send:', emailErr);
+      // roll back the account so the same email can be retried once email is fixed.
+      // The exact reason (and how to fix it) goes to the server log; visitors get a calm, safe message.
+      console.error('OTP email failed to send:', emailErr.hint || emailErr.message, emailErr.message);
       await User.deleteOne({ _id: user._id });
       return res.status(502).json({
         message:
-          'Your account details are fine, but the verification email could not be sent. ' +
-          'This almost always means SMTP_USER / SMTP_PASS in the backend .env is wrong — ' +
-          'Gmail requires a 16-character App Password (from myaccount.google.com/apppasswords), ' +
-          'not your normal Gmail password. Fix .env, restart the backend with `npm run dev`, ' +
-          'then try signing up again. (Exact SMTP error is in the backend terminal.)',
+          'Your details are fine, but we could not send the verification email right now. ' +
+          'Please try again in a few minutes. If it keeps failing, contact Codexora Solutions.',
       });
     }
 
@@ -137,12 +124,9 @@ export const resendOtp = async (req, res) => {
         html: otpEmailHtml(otp, 'Your new verification code'),
       });
     } catch (emailErr) {
-      console.error('Resend OTP email failed to send:', emailErr);
+      console.error('Resend OTP email failed to send:', emailErr.hint || emailErr.message, emailErr.message);
       return res.status(502).json({
-        message:
-          'Could not send the email — this usually means SMTP_USER / SMTP_PASS in the backend ' +
-          '.env is wrong (Gmail needs a 16-character App Password). Check the backend terminal ' +
-          'for the exact error.',
+        message: 'We could not send the email right now. Please try again in a few minutes.',
       });
     }
 
@@ -154,17 +138,32 @@ export const resendOtp = async (req, res) => {
 };
 
 // the exact JSON a successful sign-in returns — shared with the owner email-code step
-export const loginPayload = (user) => ({
-  token: generateToken(user),
-  user: {
-    id: user._id,
-    role: user.role,
-    fullName: user.fullName,
-    email: user.email,
-    businessName: user.businessName,
-    clientId: user.clientId,
-  },
-});
+// Also records the sign-in (login history / active sessions) and stamps lastLoginAt.
+export const loginPayload = async (user, req) => {
+  const ttlMs = (() => {
+    const m = /^(\d+)([smhd])$/.exec(process.env.JWT_EXPIRES_IN || '7d');
+    return m ? Number(m[1]) * { s: 1e3, m: 6e4, h: 36e5, d: 864e5 }[m[2]] : 7 * 864e5;
+  })();
+  const event = await LoginEvent.create({
+    user: user._id,
+    ip: req?.ip,
+    userAgent: String(req?.headers?.['user-agent'] || '').slice(0, 300),
+    tokenVersion: user.tokenVersion || 0,
+    expiresAt: new Date(Date.now() + ttlMs),
+  });
+  await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
+  return {
+    token: generateToken(user, event._id),
+    user: {
+      id: user._id,
+      role: user.role,
+      fullName: user.fullName,
+      email: user.email,
+      businessName: user.businessName,
+      clientId: user.clientId,
+    },
+  };
+};
 
 // POST /api/auth/login
 export const login = async (req, res) => {
@@ -186,6 +185,11 @@ export const login = async (req, res) => {
       }
       return res.status(401).json({ message: 'Invalid email or password' });
     }
+
+    // suspended / terminated accounts are turned away here too (an expired suspension lifts itself first)
+    await autoReactivateIfDue(user);
+    const blocked = accessBlock(user);
+    if (blocked) return res.status(blocked.status).json({ message: blocked.message, code: blocked.code });
 
     // the Client/Owner tab picked on the login screen — refuse here, before any token or code is issued
     if ((loginAs === 'owner' || loginAs === 'client') && loginAs !== user.role) {
@@ -217,7 +221,7 @@ export const login = async (req, res) => {
       await logAudit(req, 'auth.login', { actor: user, summary: 'Owner signed in (email code is switched off)' });
     }
 
-    res.json(loginPayload(user));
+    res.json(await loginPayload(user, req));
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message }); // e.g. code email could not be sent
     console.error(err);
@@ -234,25 +238,7 @@ export const forgotPassword = async (req, res) => {
     // respond the same way whether or not the account exists, so we don't
     // reveal which emails are registered
     if (user) {
-      const { rawToken, hashedToken } = generateResetToken();
-      user.resetToken = hashedToken;
-      user.resetTokenExpires = new Date(Date.now() + RESET_EXPIRY_MINUTES * 60 * 1000);
-      await user.save();
-
-      const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}&id=${user._id}`;
-
-      await sendEmail({
-        to: user.email,
-        subject: 'Reset your Codexora Portal password',
-        html: `
-          <div style="font-family:Arial,sans-serif;max-width:420px">
-            <h2 style="color:#14161C">Reset your password</h2>
-            <p style="color:#6B7280">Click the link below to set a new password. This link expires in ${RESET_EXPIRY_MINUTES} minutes.</p>
-            <a href="${resetUrl}" style="display:inline-block;background:#14B8A6;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;margin-top:10px">Reset password</a>
-            <p style="color:#6B7280;font-size:13px;margin-top:16px">If you didn't request this, you can ignore this email.</p>
-          </div>
-        `,
-      });
+      await sendResetLink(user); // same email as before; the owner's "Send reset link" button uses this too
     }
 
     res.json({ message: 'If that email is registered, a reset link has been sent.' });
@@ -287,6 +273,7 @@ export const resetPassword = async (req, res) => {
     user.password = newPassword; // pre-save hook re-hashes it
     user.resetToken = undefined;
     user.resetTokenExpires = undefined;
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // a reset signs the account out of every device
     await user.save();
     await logAudit(req, 'auth.password_changed', { actor: user, summary: 'Password reset via emailed link' });
 

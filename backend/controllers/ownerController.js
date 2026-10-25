@@ -13,8 +13,11 @@ import { logActivity } from '../utils/activity.js';
 import { withThumbnail } from '../utils/thumbnail.js';
 import { computeNextNumber, invoiceLabel } from '../utils/invoiceNumber.js';
 import { sendInvoicePdf } from '../utils/invoicePdf.js';
-import { sendReceiptPdf } from '../utils/receipt.js';
+import Receipt from '../models/Receipt.js';
+import { receiptForInvoice, voidReceipt, syncInvoiceDetails, paymentSummary, serialize as serializeReceipt } from '../utils/receipt.js';
+import { sendInvoiceReceipt } from './receiptController.js';
 import { renderEmail } from '../utils/settings.js';
+import { approveUser, rejectUser } from '../utils/userActions.js';
 import { logAudit } from '../utils/audit.js';
 import { diffObjects } from '../utils/auditCore.js';
 
@@ -29,7 +32,7 @@ export const listPendingRequests = async (req, res) => {
       isEmailVerified: true,
       approvalStatus: 'pending',
     })
-      .select('-password -otp -resetToken')
+      .select('-password -otp -otpExpires -resetToken -resetTokenExpires -tokenVersion -statusHistory')
       .sort({ createdAt: -1 });
 
     res.json({ requests });
@@ -44,28 +47,10 @@ export const approveRequest = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Request not found' });
-    if (user.approvalStatus !== 'pending') {
-      return res.status(400).json({ message: `This request is already ${user.approvalStatus}` });
-    }
-
-    user.approvalStatus = 'approved';
-    user.clientId = await generateClientId();
-    await user.save();
-
-    // wording is editable in Settings → Email templates
-    const mail = await renderEmail('approved', { clientName: clientLabel(user), clientId: user.clientId });
-    await sendEmail({ to: user.email, subject: mail.subject, html: mail.html });
-
-    await notifyUser(user._id, {
-      title: 'Portal access approved',
-      message: `Welcome! Your client ID is ${user.clientId}.`,
-      type: 'approval',
-    });
-    await logActivity(user._id, 'approval', `Portal access approved — client ID ${user.clientId}.`);
-    await logAudit(req, 'client.approve', { entityType: 'client', entityId: user._id, entityLabel: clientLabel(user), meta: { clientId: user.clientId, email: user.email } });
-
-    res.json({ message: 'Client approved', clientId: user.clientId });
+    const { clientId, emailSent } = await approveUser(user, req.user, req);
+    res.json({ message: 'Client approved', clientId, emailSent });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message, code: err.code });
     console.error(err);
     res.status(500).json({ message: 'Approval failed', error: err.message });
   }
@@ -74,22 +59,12 @@ export const approveRequest = async (req, res) => {
 // POST /api/owner/reject/:id
 export const rejectRequest = async (req, res) => {
   try {
-    const { reason } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Request not found' });
-    if (user.approvalStatus !== 'pending') {
-      return res.status(400).json({ message: `This request is already ${user.approvalStatus}` });
-    }
-
-    user.approvalStatus = 'rejected';
-    await user.save();
-
-    const mail = await renderEmail('rejected', { clientName: clientLabel(user), reasonNote: reason ? `Note: ${reason}` : '' });
-    await sendEmail({ to: user.email, subject: mail.subject, html: mail.html });
-    await logAudit(req, 'client.reject', { entityType: 'client', entityId: user._id, entityLabel: clientLabel(user), meta: { reason: reason || undefined, email: user.email } });
-
-    res.json({ message: 'Request rejected' });
+    const { emailSent } = await rejectUser(user, req.user, req, req.body?.reason);
+    res.json({ message: 'Request rejected', emailSent });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message, code: err.code });
     console.error(err);
     res.status(500).json({ message: 'Rejection failed', error: err.message });
   }
@@ -182,11 +157,11 @@ export const getOverview = async (req, res) => {
   }
 };
 
-// GET /api/owner/clients — every approved client + their project stage & balance due
+// GET /api/owner/clients — every approved client with a project/invoice summary
 export const listClients = async (req, res) => {
   try {
     const clients = await User.find({ role: 'client', approvalStatus: 'approved' })
-      .select('-password -otp -resetToken')
+      .select('-password -otp -otpExpires -resetToken -resetTokenExpires -tokenVersion -statusHistory')
       .sort({ createdAt: -1 });
 
     const withSummary = await Promise.all(
@@ -213,7 +188,7 @@ export const listClients = async (req, res) => {
 export const getClientDetail = async (req, res) => {
   try {
     const client = await User.findOne({ _id: req.params.id, role: 'client' }).select(
-      '-password -otp -resetToken'
+      '-password -otp -otpExpires -resetToken -resetTokenExpires -tokenVersion -statusHistory'
     );
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
@@ -221,7 +196,13 @@ export const getClientDetail = async (req, res) => {
     const invoices = await Invoice.find({ client: client._id }).sort({ createdAt: -1 });
     const deliverables = await Deliverable.find({ client: client._id }).sort({ createdAt: -1 });
 
-    res.json({ client, project, invoices, deliverables: deliverables.map(withThumbnail) });
+    const [summary, receipts] = await Promise.all([
+      paymentSummary(client._id),
+      Receipt.find({ client: client._id }).sort({ paymentDate: -1, createdAt: -1 }).limit(100),
+    ]);
+    const payments = { totalCost: summary.totalCost, totalCostSet: summary.totalCostSet, received: summary.received, balance: summary.balance };
+
+    res.json({ client, project, invoices, deliverables: deliverables.map(withThumbnail), payments, receipts: receipts.map(serializeReceipt) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Could not load client', error: err.message });
@@ -232,7 +213,7 @@ export const getClientDetail = async (req, res) => {
 // doesn't exist yet, or update it if it does (one project per client)
 export const upsertProject = async (req, res) => {
   try {
-    const { name, planLabel, stage, nextMilestoneLabel, nextMilestoneDate, stagingUrl, statusNote } = req.body;
+    const { name, planLabel, stage, nextMilestoneLabel, nextMilestoneDate, stagingUrl, statusNote, totalCost } = req.body;
     const client = await User.findOne({ _id: req.params.id, role: 'client' });
     if (!client) return res.status(404).json({ message: 'Client not found' });
 
@@ -240,6 +221,15 @@ export const upsertProject = async (req, res) => {
     // value is rendered as a clickable link on the client's dashboard
     if (stagingUrl && !/^https?:\/\//i.test(stagingUrl)) {
       return res.status(400).json({ message: 'Staging URL must start with http:// or https://' });
+    }
+
+    // agreed project price (₹) — the base for payment receipts. Empty = leave unchanged.
+    let cost;
+    if (totalCost !== undefined && totalCost !== null && totalCost !== '') {
+      cost = Number(totalCost);
+      if (!Number.isFinite(cost) || cost <= 0 || Math.abs(cost * 100 - Math.round(cost * 100)) > 1e-6 || cost > 1_000_000_000) {
+        return res.status(400).json({ message: 'Total project cost must be an amount above ₹0 with at most 2 decimals' });
+      }
     }
 
     const before = await Project.findOne({ client: client._id });
@@ -256,6 +246,7 @@ export const upsertProject = async (req, res) => {
         ...(nextMilestoneDate !== undefined && { nextMilestoneDate: nextMilestoneDate || null }),
         ...(stagingUrl !== undefined && { stagingUrl }),
         ...(statusNote !== undefined && { statusNote }),
+        ...(cost !== undefined && { totalCost: cost }),
         ...(noteWillChange && { statusNoteUpdatedAt: new Date() }),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -285,7 +276,7 @@ export const upsertProject = async (req, res) => {
       await logActivity(client._id, 'milestone', `Status update: ${project.statusNote}`);
     }
 
-    const KEYS = ['name', 'planLabel', 'stage', 'nextMilestoneLabel', 'stagingUrl', 'statusNote'];
+    const KEYS = ['name', 'planLabel', 'stage', 'nextMilestoneLabel', 'stagingUrl', 'statusNote', 'totalCost'];
     await logAudit(req, 'project.save', {
       entityType: 'project', entityId: project._id, entityLabel: `${clientLabel(client)} — ${project.name}`,
       summary: before ? `Project updated: ${clientLabel(client)}` : `Project created: ${clientLabel(client)}`,
@@ -410,6 +401,17 @@ export const updateInvoice = async (req, res) => {
     }
     await invoice.save();
 
+    // keep the receipt records in step with the invoice (a failure here must never block the invoice update itself)
+    try {
+      if (status === 'paid' && !wasPaid) await receiptForInvoice(invoice, req.user);
+      else if (status === 'due' && wasPaid) {
+        const live = await Receipt.find({ invoice: invoice._id, voided: false });
+        for (const r of live) await voidReceipt(r._id, req.user, 'Invoice was marked unpaid', { revertInvoiceStatus: false });
+      } else if (invoice.status === 'paid' && (paymentMode !== undefined || transactionId !== undefined)) await syncInvoiceDetails(invoice);
+    } catch (e) {
+      console.error('[receipt] could not sync receipt for invoice', invoice._id, e.message);
+    }
+
     const changed = diffObjects(before, invoice.toObject(), ['status', 'paymentLink', 'paymentMode', 'transactionId']);
     if (status === 'paid' && !wasPaid) {
       await logAudit(req, 'invoice.mark_paid', { entityType: 'invoice', entityId: invoice._id, entityLabel: invoiceLabel(invoice), summary: `Invoice ${invoiceLabel(invoice)} marked paid — ${formatINR(invoice.amount)}`, meta: { amount: invoice.amount, paymentMode: invoice.paymentMode, reference: invoice.transactionId } });
@@ -460,9 +462,7 @@ export const downloadReceiptOwner = async (req, res) => {
     const invoice = await Invoice.findById(req.params.invoiceId);
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
-    const client = await User.findById(invoice.client).select('fullName businessName email phone clientId');
-    const receiptNo = await sendReceiptPdf(res, invoice, client || {});
-    if (receiptNo) await logAudit(req, 'receipt.generate', { entityType: 'invoice', entityId: invoice._id, entityLabel: receiptNo });
+    await sendInvoiceReceipt(req, res, invoice);
   } catch (err) {
     console.error(err);
     if (!res.headersSent) res.status(500).json({ message: 'Could not generate the receipt', error: err.message });

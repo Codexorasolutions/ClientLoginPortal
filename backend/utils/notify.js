@@ -14,8 +14,10 @@ export const notifyUser = async (recipientId, { title, message, type }) => {
 // notifications — used for events the business owner should hear about
 // (new ticket, new reply, new lead)
 export const notifyOwners = async ({ title, message, type }) => {
-  const owners = await User.find({ role: 'owner', notificationsEnabled: { $ne: false } }).select('_id');
+  const owners = await User.find({ role: 'owner', notificationsEnabled: { $ne: false } }).select('_id preferences');
+  // My Account → Preferences lets each owner mute individual kinds (ticket / lead / approval); unset = on
+  const wanted = owners.filter((owner) => owner.preferences?.notifyTypes?.[type] !== false);
   return Promise.all(
-    owners.map((owner) => Notification.create({ recipient: owner._id, title, message, type }))
+    wanted.map((owner) => Notification.create({ recipient: owner._id, title, message, type }))
   );
 };

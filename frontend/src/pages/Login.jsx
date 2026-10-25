@@ -14,6 +14,8 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [challenge, setChallenge] = useState(null); // set when the owner must enter the emailed code
+  // set by the API client when an account was suspended/terminated or the session was ended
+  const [notice] = useState(() => { const m = sessionStorage.getItem('cx_logout_reason'); if (m) sessionStorage.removeItem('cx_logout_reason'); return m || ''; });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -73,6 +75,8 @@ export default function Login() {
           <div className="mark">CX</div>
           <div className="name">Codexora Portal</div>
         </div>
+
+        {notice && <p className="error-text" role="alert" style={{ margin: '0 0 14px' }}>{notice}</p>}
 
         {challenge ? (
           <OwnerOtpStep challenge={challenge} onVerified={finishLogin} onBack={backToPassword} />

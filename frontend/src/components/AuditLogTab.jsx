@@ -1,6 +1,8 @@
-// AuditLogTab.jsx — owner dashboard → Audit log (read-only). Styles: styles/owner-tools.css.
+// AuditLogTab.jsx — the audit log (read-only). Used as the Audit log tab AND as the Users tab's audit section.
+// Styles: styles/owner-tools.css.
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api/axios.js';
+import { downloadFile } from '../utils/download.js';
 
 const fmtFull = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 const ago = (d) => {
@@ -26,7 +28,7 @@ function MetaView({ meta }) {
   return rows.map(([k, v]) => (<div key={k} className="au-kv"><dt>{k}</dt><dd>{v}</dd></div>));
 }
 
-export default function AuditLogTab() {
+export default function AuditLogTab({ endpoint = '/owner/audit', fixedParams = {}, csvPath, actionPattern }) {
   const [catalog, setCatalog] = useState({});
   const [filters, setFilters] = useState(EMPTY);
   const [applied, setApplied] = useState(EMPTY);   // q is debounced, the rest apply instantly
@@ -35,18 +37,28 @@ export default function AuditLogTab() {
   const [state, setState] = useState('loading');   // loading | ready | error
   const [open, setOpen] = useState(null);
 
-  useEffect(() => { api.get('/owner/audit/actions').then((r) => setCatalog(r.data)).catch(() => {}); }, []);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  useEffect(() => {
+    api.get('/owner/audit/actions')
+      .then((r) => setCatalog(actionPattern ? Object.fromEntries(Object.entries(r.data).filter(([k]) => actionPattern.test(k))) : r.data))
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const t = setTimeout(() => { setApplied(filters); setPage(1); }, filters.q === applied.q ? 0 : 350); return () => clearTimeout(t); }, [filters]); // eslint-disable-line
 
   const load = useCallback(() => {
     setState('loading');
-    const params = { ...Object.fromEntries(Object.entries(applied).filter(([, v]) => v)), page, limit: 25 };
-    api.get('/owner/audit', { params }).then((r) => { setData(r.data); setState('ready'); setOpen(null); }).catch(() => setState('error'));
+    const params = { ...fixedParams, ...Object.fromEntries(Object.entries(applied).filter(([, v]) => v)), page, limit: 25 };
+    api.get(endpoint, { params }).then((r) => { setData(r.data); setState('ready'); setOpen(null); }).catch(() => setState('error'));
   }, [applied, page]);
   useEffect(load, [load]);
 
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
   const filtered = Object.values(applied).some(Boolean);
+  const exportCsv = async () => {
+    setExporting(true); setExportError('');
+    try { await downloadFile(csvPath, { ...fixedParams, ...Object.fromEntries(Object.entries(applied).filter(([, v]) => v)) }, 'audit-log.csv'); } catch { setExportError('Could not export. Please try again.'); } finally { setExporting(false); }
+  };
 
   return (
     <div className="tool-wrap">
@@ -71,7 +83,9 @@ export default function AuditLogTab() {
           <input id="au-q" type="search" placeholder="Client, invoice or person" value={filters.q} onChange={set('q')} />
         </div>
         {filtered && <button type="button" className="btn-sm ghost" onClick={() => { setFilters(EMPTY); setApplied(EMPTY); setPage(1); }}>Clear filters</button>}
+        {csvPath && <button type="button" className="btn-sm ghost" onClick={exportCsv} disabled={exporting}>{exporting ? 'Exporting…' : 'Export CSV'}</button>}
       </div>
+      {exportError && <p className="error-text" role="alert">{exportError}</p>}
 
       {state === 'error' && <p className="au-msg err" role="alert">Could not load the activity log. <button type="button" className="btn-sm ghost" onClick={load}>Try again</button></p>}
       {state === 'loading' && !data.items.length && <p className="au-msg">Loading activity…</p>}

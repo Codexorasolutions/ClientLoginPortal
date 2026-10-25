@@ -2,7 +2,7 @@ import Project from '../models/Project.js';
 import Deliverable from '../models/Deliverable.js';
 import { withThumbnail } from '../utils/thumbnail.js';
 import { sendInvoicePdf } from '../utils/invoicePdf.js';
-import { sendReceiptPdf } from '../utils/receipt.js';
+import { sendInvoiceReceipt } from './receiptController.js';
 import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import SupportTicket from '../models/SupportTicket.js';
@@ -137,7 +137,7 @@ export const downloadReceiptClient = async (req, res) => {
     const invoice = await Invoice.findOne({ _id: req.params.id, client: req.user._id });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
-    await sendReceiptPdf(res, invoice, req.user);
+    await sendInvoiceReceipt(req, res, invoice);
   } catch (err) {
     console.error(err);
     if (!res.headersSent) res.status(500).json({ message: 'Could not generate the receipt', error: err.message });

@@ -13,6 +13,10 @@ import { SkeletonStatGrid, SkeletonRows } from '../components/Skeleton.jsx';
 import timeAgo from '../utils/timeAgo.js';
 import downloadReceiptPdf from '../utils/downloadReceiptPdf.js';
 import SettingsTab from '../components/SettingsTab.jsx';
+import ReceiptsTab from '../components/ReceiptsTab.jsx';
+import MyAccountTab from '../components/MyAccountTab.jsx';
+import UsersTab from '../components/UsersTab.jsx';
+import ClientPaymentsPanel from '../components/ClientPaymentsPanel.jsx';
 import AuditLogTab from '../components/AuditLogTab.jsx';
 import '../styles/theme.css';
 import '../styles/dashboard.css';
@@ -40,7 +44,8 @@ export default function OwnerDashboard() {
   const [clientSearch, setClientSearch] = useState('');
   const [clientSort, setClientSort] = useState('name'); // 'name' | 'balance'
   const [detail, setDetail] = useState(null);
-  const [projectForm, setProjectForm] = useState({ name: '', planLabel: '', stage: 'discovery', nextMilestoneLabel: '', nextMilestoneDate: '', stagingUrl: '', statusNote: '' });
+  const [projectForm, setProjectForm] = useState({ name: '', planLabel: '', stage: 'discovery', nextMilestoneLabel: '', nextMilestoneDate: '', stagingUrl: '', statusNote: '', totalCost: '' });
+  const [receiptClientId, setReceiptClientId] = useState(''); // set when "Create receipt" is pressed on a client's profile
   const emptyFileForm = { file: null, name: '', type: 'Document', versionLabel: '' };
   const [fileForm, setFileForm] = useState(emptyFileForm);
   const [fileInputKey, setFileInputKey] = useState(0); // bumping this clears the native file input
@@ -143,6 +148,7 @@ export default function OwnerDashboard() {
       nextMilestoneDate: data.project?.nextMilestoneDate ? data.project.nextMilestoneDate.slice(0, 10) : '',
       stagingUrl: data.project?.stagingUrl || '',
       statusNote: data.project?.statusNote || '',
+      totalCost: data.project?.totalCost ? String(data.project.totalCost) : '',
     });
   };
 
@@ -179,6 +185,7 @@ export default function OwnerDashboard() {
     try {
       const { data } = await api.post(`/owner/clients/${selectedId}/project`, projectForm);
       setDetail((prev) => ({ ...prev, project: data.project }));
+      openClient(selectedId); // refresh payment totals (they depend on the project's total cost)
       loadClients();
       loadOverview();
     } catch (err) {
@@ -330,10 +337,16 @@ export default function OwnerDashboard() {
         return { title: 'Pending approval requests', sub: 'Review new client sign-ups before granting portal access.', pill: `${pending.length} awaiting review` };
       case 'clients':
         return { title: 'Clients', sub: 'Select a client to manage their project and invoices.' };
+      case 'users':
+        return { title: 'Users', sub: 'Everyone who can sign in — approve, suspend, terminate and review access.' };
+      case 'invoices':
+        return { title: 'Invoices', sub: 'Create, preview, download and print payment receipts. Every receipt is saved against a client and project.' };
       case 'support':
         return { title: 'Support tickets', sub: 'Replies here notify the client and update their dashboard immediately.', pill: `${tickets.filter((t) => t.status === 'open').length} open` };
       case 'leads':
         return { title: 'Website leads', sub: 'Contact-form submissions from codexorasolutions.online.' };
+      case 'account':
+        return { title: 'My Account', sub: 'Your profile, business details, security and preferences.' };
       case 'audit':
         return { title: 'Audit log', sub: 'A record of who approved, changed or deleted what, and when.' };
       case 'settings':
@@ -367,6 +380,12 @@ export default function OwnerDashboard() {
           <a className={tab === 'clients' ? 'on' : ''} onClick={() => { setTab('clients'); setMobileNavOpen(false); }}>
             <span className="nav-icon">👥</span>Clients
           </a>
+          <a className={tab === 'users' ? 'on' : ''} onClick={() => { setTab('users'); setMobileNavOpen(false); }}>
+            <span className="nav-icon">🔑</span>Users
+          </a>
+          <a className={tab === 'invoices' ? 'on' : ''} onClick={() => { setTab('invoices'); setMobileNavOpen(false); }}>
+            <span className="nav-icon">💳</span>Invoices
+          </a>
           <a className={tab === 'support' ? 'on' : ''} onClick={() => { setTab('support'); setMobileNavOpen(false); }}>
             <span className="nav-icon">💬</span>Support{tickets.filter((t) => t.status === 'open').length > 0 && <span className="badge">{tickets.filter((t) => t.status === 'open').length}</span>}
           </a>
@@ -378,6 +397,9 @@ export default function OwnerDashboard() {
           </a>
           <a className={tab === 'settings' ? 'on' : ''} onClick={() => { setTab('settings'); setMobileNavOpen(false); }}>
             <span className="nav-icon">⚙️</span>Settings
+          </a>
+          <a className={tab === 'account' ? 'on' : ''} onClick={() => { setTab('account'); setMobileNavOpen(false); }}>
+            <span className="nav-icon">🙋</span>My Account
           </a>
         </nav>
         <div className="idbox owner-idbox">
@@ -616,6 +638,12 @@ export default function OwnerDashboard() {
                       </div>
                     </div>
                     <div className="form-row">
+                      <div>
+                        <label>Total project cost (₹) — used on payment receipts</label>
+                        <input inputMode="decimal" value={projectForm.totalCost} onChange={(e) => setProjectForm({ ...projectForm, totalCost: e.target.value })} placeholder="e.g. 20000" />
+                      </div>
+                    </div>
+                    <div className="form-row">
                       <div style={{ flex: '1 1 100%' }}>
                         <label>Staging URL (shared with client)</label>
                         <input type="url" value={projectForm.stagingUrl} onChange={(e) => setProjectForm({ ...projectForm, stagingUrl: e.target.value })} placeholder="https://staging.example.com" />
@@ -727,6 +755,14 @@ export default function OwnerDashboard() {
                 </div>
               </div>
 
+              <ClientPaymentsPanel
+                payments={detail.payments}
+                receipts={detail.receipts}
+                hasProject={!!detail.project}
+                onCreate={() => { setReceiptClientId(selectedId); setTab('invoices'); }}
+                onViewAll={() => { setReceiptClientId(''); setTab('invoices'); }}
+              />
+
               <div className="panel" style={{ marginTop: 22 }}>
                 <h3 className="section-title">📁 Files</h3>
                 <form onSubmit={uploadFile} style={{ marginBottom: 18 }}>
@@ -835,6 +871,19 @@ export default function OwnerDashboard() {
             </div>
           </>
         )}
+
+        {tab === 'invoices' && (
+          <ReceiptsTab
+            key={receiptClientId || 'list'}
+            initialClientId={receiptClientId}
+            onInitialClientUsed={() => setReceiptClientId('')}
+            onChanged={() => { loadClients(); loadOverview(); if (selectedId) openClient(selectedId); }}
+          />
+        )}
+
+        {tab === 'account' && <MyAccountTab />}
+
+        {tab === 'users' && <UsersTab onChanged={() => { loadClients(); loadOverview(); loadPending(); }} />}
 
         {tab === 'audit' && <AuditLogTab />}
         {tab === 'settings' && <SettingsTab />}

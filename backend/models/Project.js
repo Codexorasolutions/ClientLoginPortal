@@ -15,6 +15,10 @@ const projectSchema = new mongoose.Schema(
     stagingUrl: { type: String, trim: true }, // preview link shared with the client
     statusNote: { type: String, trim: true, maxlength: 500 }, // short plain-language update from the owner
     statusNoteUpdatedAt: { type: Date }, // when the note itself last changed (not any project save)
+    // agreed total price of the project, in ₹ — the base for every payment receipt's "Balance due"
+    totalCost: { type: Number, min: 0 },
+    // bumped on every receipt create/cancel; makes two receipts saved at the same moment re-check the balance
+    receiptsVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

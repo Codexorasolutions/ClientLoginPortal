@@ -41,6 +41,53 @@ const userSchema = new mongoose.Schema(
     // the activity feed and every dashboard number stay accurate either way,
     // this only mutes the bell/unread badge.
     notificationsEnabled: { type: Boolean, default: true },
+
+    // ---- account access control (Users tab) ----
+    // Approval (pending/approved/rejected) is unchanged. This is a SECOND, independent switch the owner can flip
+    // on an approved account. Accounts created before this field existed have none = treated as 'active'.
+    accessStatus: { type: String, enum: ['active', 'suspended', 'terminated'], default: 'active' },
+    statusReason: { type: String, trim: true, maxlength: 300 },
+    suspendedAt: Date,
+    suspendedUntil: Date, // optional auto-reactivate date
+    terminatedAt: Date,
+    statusHistory: [
+      {
+        _id: false,
+        status: { type: String }, // approved | rejected | suspended | reactivated | terminated | restored | auto-reactivated
+        reason: { type: String, maxlength: 300 },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        byName: String,
+        until: Date,
+        at: { type: Date, default: Date.now },
+      },
+    ],
+    // Bumped to sign a user out of EVERY device: tokens carry the number they were issued with, and
+    // the auth middleware rejects any token whose number no longer matches.
+    tokenVersion: { type: Number, default: 0 },
+    lastLoginAt: Date,
+    ownerNotes: { type: String, maxlength: 2000 }, // private notes — never returned by any client-facing route
+
+    // ---- owner's own account (My Account tab) ----
+    designation: { type: String, trim: true, maxlength: 60 },
+    avatarUrl: { type: String, trim: true },
+    avatarPublicId: { type: String, select: false },
+    twoFactorEnabled: { type: Boolean }, // owner only; undefined = ON (the safe default)
+    preferences: {
+      theme: { type: String, enum: ['light', 'dark', 'system'] },
+      dateFormat: { type: String, enum: ['DD MMM YYYY', 'DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] },
+      notifyTypes: {
+        ticket: { type: Boolean },
+        lead: { type: Boolean },
+        approval: { type: Boolean },
+      },
+    },
+
+    // email change in progress (secrets are select:false, so no query returns them unless explicitly asked)
+    pendingEmail: { type: String, lowercase: true, trim: true, select: false },
+    pendingEmailOtpHash: { type: String, select: false },
+    pendingEmailExpires: { type: Date, select: false },
+    pendingEmailAttempts: { type: Number, select: false },
+    pendingEmailSentAt: { type: Date, select: false },
   },
   { timestamps: true }
 );

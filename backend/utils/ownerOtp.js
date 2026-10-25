@@ -40,8 +40,8 @@ export async function startOwnerChallenge(req, user) {
   try { await sendCode(user, code, req); }
   catch (err) {
     await Challenge.deleteOne({ _id: row._id });
-    console.error('[owner-otp] email failed:', err.message);
-    throw fail(503, 'We could not email your sign-in code. Check the SMTP settings or try again in a minute.');
+    console.error('[owner-otp] email failed:', err.hint || err.message, err.message);
+    throw fail(503, 'We could not email your sign-in code. Check the server logs for the reason (or set OWNER_2FA=off temporarily), then try again.');
   }
   return clientView(challengeId, user);
 }
@@ -60,7 +60,7 @@ export async function resendOwnerCode(req, challengeId) {
   if (!row) throw fail(429, 'Please wait a minute before asking for another code, or sign in again.');
   const user = await User.findById(row.user);
   try { await sendCode(user, code, req); }
-  catch (err) { console.error('[owner-otp] resend failed:', err.message); throw fail(503, 'We could not email your sign-in code. Try again in a minute.'); }
+  catch (err) { console.error('[owner-otp] resend failed:', err.hint || err.message, err.message); throw fail(503, 'We could not email your sign-in code. Try again in a minute.'); }
   return { ...clientView(challengeId, user), resendsLeft: CONFIG.MAX_RESENDS - row.resends };
 }
 

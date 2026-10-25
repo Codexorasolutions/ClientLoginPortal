@@ -35,7 +35,8 @@ export const maskEmail = (email = '') => {
   return `${user.slice(0, 2)}${'*'.repeat(Math.max(1, user.length - 2))}@${domain}`;
 };
 
-export const needsOwnerOtp = (user) => !!user && user.role === 'owner' && String(process.env.OWNER_2FA || 'on').toLowerCase() !== 'off';
+export const needsOwnerOtp = (user) =>
+  !!user && user.role === 'owner' && user.twoFactorEnabled !== false && String(process.env.OWNER_2FA || 'on').toLowerCase() !== 'off';
 
 // "Chrome on Windows" for the email, so the owner can spot a sign-in that isn't theirs
 export function describeDevice(ua = '') {

@@ -20,6 +20,13 @@ export default function ThemeToggle() {
     }
   }, [mode]);
 
+  // My Account → Preferences can change the theme too; keep this button in step
+  useEffect(() => {
+    const sync = (e) => setMode(e.detail === 'light' || e.detail === 'dark' ? e.detail : 'system');
+    window.addEventListener('cx-theme-change', sync);
+    return () => window.removeEventListener('cx-theme-change', sync);
+  }, []);
+
   const next = { system: 'light', light: 'dark', dark: 'system' };
   const icon = { system: systemPrefersDark() ? '🌙' : '☀️', light: '☀️', dark: '🌙' };
   const label = { system: 'Theme: System', light: 'Theme: Light', dark: 'Theme: Dark' };

@@ -1,4 +1,6 @@
-// simple 6-digit numeric OTP, e.g. "482913"
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+import crypto from 'crypto';
+
+// 6-digit numeric OTP, e.g. "482913" — from a cryptographically secure source (Math.random is predictable)
+const generateOtp = () => String(crypto.randomInt(100000, 1000000));
 
 export default generateOtp;

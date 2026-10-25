@@ -11,12 +11,32 @@ export const ACTIONS = {
   'invoice.create':        { label: 'Invoice created',        level: 'info' },
   'invoice.update':        { label: 'Invoice updated',        level: 'warn' },
   'invoice.mark_paid':     { label: 'Invoice marked paid',    level: 'info' },
+  'receipt.create':        { label: 'Receipt created',        level: 'info' },
+  'receipt.void':          { label: 'Receipt cancelled',      level: 'danger' },
   'receipt.generate':      { label: 'Receipt downloaded',     level: 'info' },
   'file.upload':           { label: 'File shared with client', level: 'info' },
   'ticket.reply':          { label: 'Ticket reply sent',      level: 'info' },
   'ticket.status':         { label: 'Ticket status changed',  level: 'warn' },
   'lead.update':           { label: 'Lead updated',           level: 'warn' },
   'settings.update':       { label: 'Settings changed',       level: 'warn' },
+  'account.profile_update':   { label: 'Owner profile updated',   level: 'info' },
+  'account.avatar_update':    { label: 'Profile photo changed',   level: 'info' },
+  'account.business_update':  { label: 'Business details changed', level: 'warn' },
+  'account.email_changed':    { label: 'Owner email changed',     level: 'danger' },
+  'account.two_factor_changed': { label: 'Two-factor login changed', level: 'danger' },
+  'account.preferences_update': { label: 'Preferences changed',   level: 'info' },
+  'account.logout_all':       { label: 'Signed out of all devices', level: 'warn' },
+  'user.update':          { label: 'User details edited',    level: 'warn' },
+  'user.suspend':         { label: 'User suspended',         level: 'danger' },
+  'user.reactivate':      { label: 'User reactivated',       level: 'info' },
+  'user.terminate':       { label: 'User terminated',        level: 'danger' },
+  'user.restore':         { label: 'User restored',          level: 'info' },
+  'user.force_logout':    { label: 'User signed out everywhere', level: 'warn' },
+  'user.reset_password':  { label: 'User password reset',    level: 'warn' },
+  'user.resend_email':    { label: 'Email re-sent to user',  level: 'info' },
+  'user.export':          { label: 'User data exported',     level: 'warn' },
+  'user.delete':          { label: 'User permanently deleted', level: 'danger' },
+  'user.bulk':            { label: 'Bulk action on users',   level: 'warn' },
   'export.download':       { label: 'Data exported',          level: 'warn' },
 };
 
@@ -90,7 +110,7 @@ export function buildFilter(q = {}) {
   const text = String(q.q || '').trim().slice(0, 80);
   if (text) {
     const rx = new RegExp(escapeRegex(text), 'i');
-    filter.$or = [{ summary: rx }, { entityLabel: rx }, { 'actor.name': rx }, { 'actor.email': rx }];
+    filter.$or = [{ summary: rx }, { entityLabel: rx }, { 'actor.name': rx }, { 'actor.email': rx }, { 'meta.reason': rx }]; // the reason given for suspend/terminate is searchable too
   }
   const limit = Math.min(100, Math.max(1, parseInt(q.limit, 10) || 25));
   const page = Math.max(1, parseInt(q.page, 10) || 1);

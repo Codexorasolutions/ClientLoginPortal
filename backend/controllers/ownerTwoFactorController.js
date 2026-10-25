@@ -19,7 +19,7 @@ export const verifyOwnerLogin = async (req, res) => {
   try {
     const user = await verifyOwnerCode(challengeId, code);
     await logAudit(req, 'auth.login', { actor: user, summary: 'Owner signed in (email code verified)' });
-    res.json(loginPayload(user));
+    res.json(await loginPayload(user, req));
   } catch (err) {
     if (err.code === 'wrong_code') await logAudit(req, 'auth.2fa_failed', { actor: err.user, summary: `Wrong sign-in code (${err.attemptsLeft} tries left)` });
     if (err.code === 'locked') await logAudit(req, 'auth.2fa_locked', { actor: err.user, summary: 'Sign-in locked after too many wrong codes' });
